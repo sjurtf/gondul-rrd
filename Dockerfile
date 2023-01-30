@@ -1,12 +1,28 @@
-FROM centos:latest
-RUN yum -y update && yum -y clean all
-RUN yum -y install git epel-release
-RUN yum -y install --enablerepo=epel rrdtool-devel rrdtool golang
+FROM golang:1.19.5-bullseye as builder
 
-ENV GOPATH /go
-ADD . /go/src/app
-WORKDIR /go/src/app
-RUN go get -u github.com/ziutek/rrd
-RUN go build
+RUN apt update && \
+    apt install -y librrd-dev rrdtool
 
-CMD ["./app"]
+ENV GO111MODULE=on \
+    CGO_ENABLED=1
+#    GOOS=linux \
+#    GOARCH=amd64
+
+WORKDIR /app
+
+COPY go.mod .
+COPY go.sum .
+RUN go mod download
+
+COPY . /app
+RUN go build -o binary .
+
+FROM alpine:latest
+
+RUN addgroup -S app && adduser -S app -G app
+
+WORKDIR /app
+COPY --from=builder /app/binary .
+
+USER app
+ENTRYPOINT ["./binary"]
